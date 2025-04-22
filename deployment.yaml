@@ -1,0 +1,64 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: test-deployment
+spec:
+  replicas: 4
+  strategy:
+    type: RollingUpdate
+    rollingUpdate: #один дополнительный и максимум один недоступный под во время обновления
+      maxSurge: 1
+      maxUnavailable: 1
+  selector:
+    matchLabels:
+      app: test-app
+  template:
+    metadata:
+      labels:
+        app: test-app
+    spec:
+      affinity:
+        nodeAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            preference:
+              matchExpressions:
+                - key: failure-domain.beta.kubernetes.io/zone #равномерно по зонам доступности
+                  operator: In
+                  values:
+                    - zone-a
+                    - zone-b
+                    - zone-c
+        podAntiAffinity:    
+          requiredDuringSchedulingIgnoredDuringExecution:
+          - labelSelector:
+              matchExpressions:
+                - key: app
+                  operator: In
+                  values:
+                    - test-app
+            topologyKey: kubernetes.io/hostname #Запрет на размещения нескольких под на одном хосте
+      containers:
+      - name: test-app-container
+        image: repo/image:123
+        resources:
+          requests:
+            cpu: "0.1"
+            memory: "128Mi"
+          limits:
+            cpu: "0.2" #лимит, так как нагрузка на старте выше
+            memory: "256Mi"
+        readinessProbe:
+          httpGet:
+            path: /healthProbe
+            port: 8080
+          initialDelaySeconds: 10 #делей проверки для старта сервиса
+          periodSeconds: 10
+          timeoutSeconds: 1
+        livenessProbe:
+          httpGet:
+            path: /healthProbe
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 30
+          timeoutSeconds: 1
